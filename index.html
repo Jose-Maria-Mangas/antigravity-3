@@ -1,0 +1,912 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Antigravity 3</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            background: #0a0b10;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* HUD */
+        .hud {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+            color: rgba(255, 255, 255, 0.92);
+        }
+
+        .topbar {
+            position: absolute;
+            left: 16px;
+            top: 14px;
+            display: flex;
+            gap: 18px;
+            align-items: baseline;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, .6);
+        }
+
+        .brand {
+            font-weight: 800;
+            letter-spacing: 0.10em;
+            opacity: 0.95;
+        }
+
+        .stat {
+            font-weight: 650;
+            opacity: 0.92;
+        }
+
+        .hint {
+            position: absolute;
+            left: 16px;
+            top: 44px;
+            font-size: 12px;
+            opacity: 0.72;
+        }
+
+        .centerOverlay {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            width: min(560px, 92vw);
+            padding: 18px 18px;
+            background: rgba(10, 12, 18, 0.62);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            box-shadow: 0 12px 50px rgba(0, 0, 0, 0.55);
+            pointer-events: none;
+            backdrop-filter: blur(6px);
+        }
+
+        .centerOverlay h1 {
+            margin: 0 0 8px 0;
+            font-size: 26px;
+            letter-spacing: 0.08em;
+        }
+
+        .centerOverlay p {
+            margin: 6px 0;
+            opacity: 0.88;
+            line-height: 1.35;
+        }
+
+        .kbd {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.06);
+            font-weight: 700;
+            letter-spacing: .04em;
+        }
+
+        .buttonsRow {
+            position: absolute;
+            right: 16px;
+            top: 14px;
+            display: flex;
+            gap: 10px;
+            pointer-events: auto;
+        }
+
+        button {
+            pointer-events: auto;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.06);
+            color: rgba(255, 255, 255, 0.92);
+            border-radius: 10px;
+            padding: 8px 10px;
+            font-weight: 700;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.10);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        .toast {
+            position: absolute;
+            left: 50%;
+            bottom: 18px;
+            transform: translateX(-50%);
+            font-size: 12px;
+            opacity: 0.85;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.10);
+            padding: 8px 12px;
+            border-radius: 999px;
+            pointer-events: none;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, .6);
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="c"></canvas>
+
+    <div class="hud">
+        <div class="topbar">
+            <div class="brand">ANTIGRAVITY 3</div>
+            <div class="stat" id="score">Puntos: 0</div>
+            <div class="stat" id="level">Nivel: 1</div>
+            <div class="stat" id="lives">Vidas: 3</div>
+        </div>
+
+        <div class="hint" id="hint">
+            Mueve el ratón para atraer al comecocos · <span class="kbd">R</span> reinicia · <span class="kbd">M</span>
+            silencio
+        </div>
+
+        <div class="buttonsRow">
+            <button id="btnMute" title="Silencio (M)">🔊 Sonido</button>
+            <button id="btnRestart" title="Reiniciar (R)">⟲ Reiniciar</button>
+        </div>
+
+        <div class="centerOverlay" id="overlay">
+            <h1>ANTIGRAVITY 3</h1>
+            <p>Come bolitas para sumar puntos. Evita a los enemigos.</p>
+            <p><span class="kbd">Haz clic</span> para activar el sonido y empezar.</p>
+        </div>
+
+        <div class="toast" id="toast">+100</div>
+    </div>
+
+    <script>
+        (() => {
+            // ========= Canvas / Resize =========
+            const canvas = document.getElementById('c');
+            const ctx = canvas.getContext('2d', { alpha: false });
+
+            let W = 1280, H = 720, DPR = 1;
+            function resize() {
+                DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+                W = Math.floor(window.innerWidth);
+                H = Math.floor(window.innerHeight);
+                canvas.width = Math.floor(W * DPR);
+                canvas.height = Math.floor(H * DPR);
+                ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+            }
+            window.addEventListener('resize', resize);
+            resize();
+
+            // ========= HUD =========
+            const elScore = document.getElementById('score');
+            const elLives = document.getElementById('lives');
+            const elLevel = document.getElementById('level');
+            const overlay = document.getElementById('overlay');
+            const toast = document.getElementById('toast');
+            const btnMute = document.getElementById('btnMute');
+            const btnRestart = document.getElementById('btnRestart');
+
+            function showToast(text, ms = 800) {
+                toast.textContent = text;
+                toast.style.display = 'block';
+                clearTimeout(showToast._t);
+                showToast._t = setTimeout(() => toast.style.display = 'none', ms);
+            }
+
+            // ========= Audio (WebAudio) =========
+            // Chrome/Edge bloquean audio hasta gesto del usuario.
+            let audioCtx = null;
+            let master = null;
+            let musicGain = null;
+            let sfxGain = null;
+            let muted = false;
+            let musicNodes = [];
+
+            function audioEnsure() {
+                if (audioCtx) return;
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                master = audioCtx.createGain();
+                musicGain = audioCtx.createGain();
+                sfxGain = audioCtx.createGain();
+
+                master.gain.value = 0.65;
+                musicGain.gain.value = 0.22;
+                sfxGain.gain.value = 0.85;
+
+                musicGain.connect(master);
+                sfxGain.connect(master);
+                master.connect(audioCtx.destination);
+            }
+
+            function setMuted(m) {
+                muted = m;
+                if (!audioCtx) return;
+                master.gain.setTargetAtTime(muted ? 0 : 0.65, audioCtx.currentTime, 0.02);
+                btnMute.textContent = muted ? "🔇 Silencio" : "🔊 Sonido";
+            }
+
+            function beep(freq = 440, dur = 0.08, type = 'sine', vol = 0.25) {
+                if (!audioCtx || muted) return;
+                const t0 = audioCtx.currentTime;
+                const o = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                o.type = type;
+                o.frequency.setValueAtTime(freq, t0);
+                g.gain.setValueAtTime(0, t0);
+                g.gain.linearRampToValueAtTime(vol, t0 + 0.01);
+                g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+                o.connect(g);
+                g.connect(sfxGain);
+                o.start(t0);
+                o.stop(t0 + dur + 0.02);
+            }
+
+            function noiseHit(dur = 0.08, vol = 0.25) {
+                if (!audioCtx || muted) return;
+                const t0 = audioCtx.currentTime;
+                const bufferSize = Math.floor(audioCtx.sampleRate * dur);
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+
+                const src = audioCtx.createBufferSource();
+                src.buffer = buffer;
+                const g = audioCtx.createGain();
+                g.gain.setValueAtTime(vol, t0);
+                g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+                src.connect(g);
+                g.connect(sfxGain);
+                src.start(t0);
+                src.stop(t0 + dur);
+            }
+
+            function startMusic() {
+                if (!audioCtx) return;
+                stopMusic();
+
+                // Música: acordes suaves con 2 osciladores + LFO
+                const base = audioCtx.currentTime;
+                const lfo = audioCtx.createOscillator();
+                const lfoGain = audioCtx.createGain();
+                lfo.frequency.setValueAtTime(0.18, base);
+                lfoGain.gain.setValueAtTime(6, base);
+                lfo.connect(lfoGain);
+
+                const pad1 = audioCtx.createOscillator();
+                const pad2 = audioCtx.createOscillator();
+                const g1 = audioCtx.createGain();
+                const g2 = audioCtx.createGain();
+
+                pad1.type = 'triangle';
+                pad2.type = 'sine';
+
+                // Un "modo" simple: alterna notas cada 2 compases aprox.
+                const seq = [
+                    [220, 330], // A + E
+                    [196, 294], // G + D
+                    [246.94, 369.99], // B + F#
+                    [174.61, 261.63] // F + C
+                ];
+                let step = 0;
+
+                function setChord(i) {
+                    const [f1, f2] = seq[i % seq.length];
+                    const t = audioCtx.currentTime;
+                    pad1.frequency.setTargetAtTime(f1, t, 0.05);
+                    pad2.frequency.setTargetAtTime(f2, t, 0.05);
+                }
+
+                // vibrato muy suave
+                lfoGain.connect(pad1.frequency);
+                lfoGain.connect(pad2.frequency);
+
+                g1.gain.setValueAtTime(0.0, base);
+                g2.gain.setValueAtTime(0.0, base);
+                g1.gain.linearRampToValueAtTime(0.35, base + 0.8);
+                g2.gain.linearRampToValueAtTime(0.25, base + 0.8);
+
+                pad1.connect(g1); pad2.connect(g2);
+                g1.connect(musicGain); g2.connect(musicGain);
+
+                lfo.start(base);
+                pad1.start(base);
+                pad2.start(base);
+
+                // Cambia acorde suavemente
+                const chordTimer = setInterval(() => setChord(++step), 2400);
+                setChord(step);
+
+                musicNodes = [lfo, pad1, pad2, g1, g2, chordTimer];
+            }
+
+            function stopMusic() {
+                if (!audioCtx) return;
+                for (const n of musicNodes) {
+                    if (!n) continue;
+                    if (typeof n === 'number') clearInterval(n);
+                    else if (typeof n.stop === 'function') {
+                        try { n.stop(); } catch { }
+                    }
+                }
+                musicNodes = [];
+            }
+
+            // ========= Game State =========
+            const rand = (a, b) => a + Math.random() * (b - a);
+            const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+            const dist2 = (ax, ay, bx, by) => {
+                const dx = ax - bx, dy = ay - by;
+                return dx * dx + dy * dy;
+            }
+
+            const state = {
+                running: false,
+                startedOnce: false,
+                score: 0,
+                level: 1,
+                lives: 3,
+                time: 0,
+                lastHitTime: -999,
+                pelletEaten: 0,
+            };
+
+            const mouse = { x: W * 0.5, y: H * 0.5, active: false };
+
+            // Player (Pac-man)
+            const player = {
+                x: W * 0.5, y: H * 0.62,
+                vx: 0, vy: 0,
+                r: 16,
+                accel: 0.22, // atracción hacia el ratón
+                drag: 0.985, // freno
+                maxSpeed: 9.0,
+                bounce: 0.55, // rebote contra paredes
+                color: '#f7d51d',
+                mouth: 0,
+                mouthSpeed: 0.18,
+                mouthOpen: 0.45
+            };
+
+            // Pellets / Enemies
+            let pellets = [];
+            let enemies = [];
+
+            function resetGame() {
+                state.running = false;
+                state.score = 0;
+                state.level = 1;
+                state.lives = 3;
+                state.time = 0;
+                state.lastHitTime = -999;
+                state.pelletEaten = 0;
+
+                player.x = W * 0.5; player.y = H * 0.62;
+                player.vx = 0; player.vy = 0;
+
+                spawnLevel(1);
+                updateHUD();
+
+                overlay.style.display = 'block';
+                overlay.innerHTML = `
+          <h1>ANTIGRAVITY 3</h1>
+          <p>Come bolitas para sumar puntos. Evita a los enemigos.</p>
+          <p><span class="kbd">Haz clic</span> para activar el sonido y empezar.</p>
+        `;
+            }
+
+            function updateHUD() {
+                elScore.textContent = `Puntos: ${state.score}`;
+                elLives.textContent = `Vidas: ${state.lives}`;
+                elLevel.textContent = `Nivel: ${state.level}`;
+            }
+
+            function spawnPellets(count) {
+                pellets = [];
+                const margin = 36;
+                let tries = 0;
+                while (pellets.length < count && tries++ < count * 50) {
+                    const x = rand(margin, W - margin);
+                    const y = rand(margin + 40, H - margin);
+                    // evita spawn encima del jugador
+                    if (dist2(x, y, player.x, player.y) < (120 * 120)) continue;
+                    // evita demasiado pegadas
+                    let ok = true;
+                    for (const p of pellets) {
+                        if (dist2(x, y, p.x, p.y) < (32 * 32)) { ok = false; break; }
+                    }
+                    if (!ok) continue;
+                    pellets.push({ x, y, r: 6, glow: rand(0, 1) });
+                }
+            }
+
+            function spawnEnemies(count) {
+                enemies = [];
+                const margin = 42;
+                for (let i = 0; i < count; i++) {
+                    // spawnea en bordes para que "entren" al campo
+                    const side = Math.floor(rand(0, 4));
+                    let x = margin, y = margin;
+                    if (side === 0) { x = rand(margin, W - margin); y = margin; } // top
+                    if (side === 1) { x = W - margin; y = rand(margin, H - margin); } // right
+                    if (side === 2) { x = rand(margin, W - margin); y = H - margin; } // bottom
+                    if (side === 3) { x = margin; y = rand(margin, H - margin); } // left
+
+                    const speed = rand(1.2, 2.2) + state.level * 0.08;
+                    const ang = rand(0, Math.PI * 2);
+                    enemies.push({
+                        x, y,
+                        vx: Math.cos(ang) * speed,
+                        vy: Math.sin(ang) * speed,
+                        r: 14,
+                        hue: rand(190, 320),
+                        wobble: rand(0, 1000)
+                    });
+                }
+            }
+
+            function spawnLevel(level) {
+                state.level = level;
+                const pelletCount = clamp(18 + level * 6, 18, 80);
+                const enemyCount = clamp(1 + Math.floor((level - 1) / 2), 1, 6);
+                spawnPellets(pelletCount);
+                spawnEnemies(enemyCount);
+                updateHUD();
+            }
+
+            function startGameIfNeeded() {
+                audioEnsure();
+                // reanuda contexto si estaba suspendido
+                if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => { });
+                startMusic();
+
+                overlay.style.display = 'none';
+                state.running = true;
+                state.startedOnce = true;
+            }
+
+            function gameOver() {
+                state.running = false;
+                stopMusic();
+                beep(110, 0.25, 'sawtooth', 0.18);
+
+                overlay.style.display = 'block';
+                overlay.innerHTML = `
+          <h1>GAME OVER</h1>
+          <p>Puntos: <b>${state.score}</b> · Nivel alcanzado: <b>${state.level}</b></p>
+          <p>Pulsa <span class="kbd">R</span> o haz clic para reiniciar.</p>
+        `;
+            }
+
+            function nextLevel() {
+                state.running = false;
+                beep(880, 0.10, 'triangle', 0.25);
+                beep(990, 0.10, 'triangle', 0.22);
+                showToast(`Nivel ${state.level + 1} ✓`, 900);
+
+                overlay.style.display = 'block';
+                overlay.innerHTML = `
+          <h1>NIVEL ${state.level + 1}</h1>
+          <p>Prepárate…</p>
+        `;
+
+                setTimeout(() => {
+                    spawnLevel(state.level + 1);
+                    overlay.style.display = 'none';
+                    state.running = true;
+                }, 800);
+            }
+
+            // ========= Input =========
+            canvas.addEventListener('mousemove', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                mouse.x = (e.clientX - rect.left);
+                mouse.y = (e.clientY - rect.top);
+                mouse.active = true;
+            });
+
+            window.addEventListener('keydown', (e) => {
+                const k = e.key.toLowerCase();
+                if (k === 'r') {
+                    resetGame();
+                    // si ya arrancó una vez, reinicio rápido al pulsar R
+                    if (state.startedOnce) {
+                        audioEnsure();
+                        if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => { });
+                        startMusic();
+                        overlay.style.display = 'none';
+                        state.running = true;
+                    }
+                }
+                if (k === 'm') {
+                    if (!audioCtx) audioEnsure();
+                    setMuted(!muted);
+                    showToast(muted ? "Silencio" : "Sonido");
+                }
+            });
+
+            // Click para activar sonido y empezar / reiniciar
+            window.addEventListener('pointerdown', () => {
+                if (!state.startedOnce) {
+                    startGameIfNeeded();
+                    return;
+                }
+                // si está en game over o pausa de overlay
+                if (!state.running) {
+                    resetGame();
+                    startGameIfNeeded();
+                }
+            }, { passive: true });
+
+            btnMute.addEventListener('click', (e) => {
+                e.stopPropagation();
+                audioEnsure();
+                if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => { });
+                setMuted(!muted);
+                showToast(muted ? "Silencio" : "Sonido");
+            });
+
+            btnRestart.addEventListener('click', (e) => {
+                e.stopPropagation();
+                resetGame();
+                if (state.startedOnce) startGameIfNeeded();
+            });
+
+            // ========= Physics / Update =========
+            function update(dt) {
+                state.time += dt;
+
+                if (!state.running) return;
+
+                // Player attraction toward mouse
+                const dx = mouse.x - player.x;
+                const dy = mouse.y - player.y;
+
+                // acelera hacia el ratón (con limitación)
+                player.vx += dx * player.accel * dt;
+                player.vy += dy * player.accel * dt;
+
+                // cap velocidad
+                const sp = Math.hypot(player.vx, player.vy);
+                if (sp > player.maxSpeed) {
+                    const s = player.maxSpeed / sp;
+                    player.vx *= s;
+                    player.vy *= s;
+                }
+
+                // freno / drag
+                const dragPow = Math.pow(player.drag, dt * 60);
+                player.vx *= dragPow;
+                player.vy *= dragPow;
+
+                // mover
+                player.x += player.vx;
+                player.y += player.vy;
+
+                // límites de pantalla (rebote, sin wrap)
+                const r = player.r;
+                if (player.x < r) { player.x = r; player.vx = Math.abs(player.vx) * player.bounce; beep(120, 0.03, 'sine', 0.06); }
+                if (player.x > W - r) { player.x = W - r; player.vx = -Math.abs(player.vx) * player.bounce; beep(120, 0.03, 'sine', 0.06); }
+                if (player.y < r + 40) { player.y = r + 40; player.vy = Math.abs(player.vy) * player.bounce; beep(120, 0.03, 'sine', 0.06); }
+                if (player.y > H - r) { player.y = H - r; player.vy = -Math.abs(player.vy) * player.bounce; beep(120, 0.03, 'sine', 0.06); }
+
+                // mouth animation (basado en velocidad)
+                const speedNorm = clamp(Math.hypot(player.vx, player.vy) / player.maxSpeed, 0, 1);
+                player.mouth += player.mouthSpeed * (0.6 + speedNorm * 1.6);
+                const mouth = (Math.sin(player.mouth) * 0.5 + 0.5) * player.mouthOpen * (0.35 + speedNorm * 0.9);
+
+                // Eat pellets
+                let eatenNow = 0;
+                for (let i = pellets.length - 1; i >= 0; i--) {
+                    const p = pellets[i];
+                    const rr = (player.r + p.r) * 0.95;
+                    if (dist2(player.x, player.y, p.x, p.y) <= rr * rr) {
+                        pellets.splice(i, 1);
+                        eatenNow++;
+                        state.pelletEaten++;
+                        const pts = 10 + Math.min(40, state.level * 2);
+                        state.score += pts;
+                        beep(520 + Math.random() * 120, 0.05, 'triangle', 0.18);
+                        if (state.pelletEaten % 10 === 0) beep(780, 0.06, 'sine', 0.16);
+                        showToast(`+${pts}`, 450);
+                    }
+                }
+                if (eatenNow) updateHUD();
+
+                // All pellets eaten -> next level
+                if (pellets.length === 0) {
+                    nextLevel();
+                    return;
+                }
+
+                // Enemies movement
+                const dangerBoost = 1 + state.level * 0.03;
+                for (const e of enemies) {
+                    // suavemente "cazan" al jugador
+                    const tx = player.x - e.x;
+                    const ty = player.y - e.y;
+                    const chase = 0.0008 + state.level * 0.00006;
+                    e.vx += tx * chase * dt * 60;
+                    e.vy += ty * chase * dt * 60;
+
+                    // limita velocidad enemigo
+                    const maxE = (2.3 + state.level * 0.12) * dangerBoost;
+                    const sE = Math.hypot(e.vx, e.vy);
+                    if (sE > maxE) {
+                        const k = maxE / sE;
+                        e.vx *= k; e.vy *= k;
+                    }
+
+                    // mover
+                    e.x += e.vx;
+                    e.y += e.vy;
+
+                    // rebote en bordes
+                    const er = e.r;
+                    if (e.x < er) { e.x = er; e.vx = Math.abs(e.vx); }
+                    if (e.x > W - er) { e.x = W - er; e.vx = -Math.abs(e.vx); }
+                    if (e.y < er + 40) { e.y = er + 40; e.vy = Math.abs(e.vy); }
+                    if (e.y > H - er) { e.y = H - er; e.vy = -Math.abs(e.vy); }
+                }
+
+                // Collisions with enemies (i-frames)
+                const invuln = 1.0; // segundos invulnerable tras golpe
+                const canHit = (state.time - state.lastHitTime) > invuln;
+                if (canHit) {
+                    for (const e of enemies) {
+                        const rr = (player.r + e.r) * 0.92;
+                        if (dist2(player.x, player.y, e.x, e.y) <= rr * rr) {
+                            state.lastHitTime = state.time;
+                            state.lives--;
+                            updateHUD();
+                            noiseHit(0.10, 0.28);
+                            beep(180, 0.12, 'sawtooth', 0.20);
+                            showToast("¡Daño! -1 vida", 900);
+
+                            // empujón
+                            const nx = (player.x - e.x);
+                            const ny = (player.y - e.y);
+                            const nlen = Math.max(0.001, Math.hypot(nx, ny));
+                            player.vx += (nx / nlen) * 7;
+                            player.vy += (ny / nlen) * 7;
+
+                            if (state.lives <= 0) {
+                                gameOver();
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // ========= Render =========
+            function drawBackground() {
+                // fondo con gradiente + grid sutil
+                const g = ctx.createLinearGradient(0, 0, 0, H);
+                g.addColorStop(0, '#070910');
+                g.addColorStop(1, '#0b1020');
+                ctx.fillStyle = g;
+                ctx.fillRect(0, 0, W, H);
+
+                // nebulosa suave
+                ctx.save();
+                ctx.globalAlpha = 0.18;
+                for (let i = 0; i < 6; i++) {
+                    const x = (Math.sin(state.time * 0.12 + i) * 0.5 + 0.5) * W;
+                    const y = (Math.cos(state.time * 0.10 + i * 1.7) * 0.5 + 0.5) * H;
+                    const r = 220 + i * 70;
+                    const rg = ctx.createRadialGradient(x, y, 0, x, y, r);
+                    rg.addColorStop(0, `rgba(70,120,255,0.20)`);
+                    rg.addColorStop(1, `rgba(0,0,0,0)`);
+                    ctx.fillStyle = rg;
+                    ctx.beginPath();
+                    ctx.arc(x, y, r, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
+
+                // grid
+                ctx.save();
+                ctx.globalAlpha = 0.12;
+                ctx.strokeStyle = '#6aa0ff';
+                ctx.lineWidth = 1;
+                const step = 40;
+                for (let x = 0; x <= W; x += step) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, H);
+                    ctx.stroke();
+                }
+                for (let y = 40; y <= H; y += step) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(W, y);
+                    ctx.stroke();
+                }
+                ctx.restore();
+
+                // barra superior (zona HUD)
+                ctx.save();
+                ctx.globalAlpha = 0.25;
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, W, 58);
+                ctx.restore();
+            }
+
+            function drawPellets() {
+                for (const p of pellets) {
+                    p.glow += 0.02;
+                    const pulse = (Math.sin(p.glow) * 0.5 + 0.5);
+                    const rr = p.r + pulse * 1.6;
+
+                    ctx.save();
+                    // halo
+                    ctx.globalAlpha = 0.22;
+                    const rg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr * 4);
+                    rg.addColorStop(0, 'rgba(255,240,160,0.35)');
+                    rg.addColorStop(1, 'rgba(0,0,0,0)');
+                    ctx.fillStyle = rg;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, rr * 4, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // núcleo
+                    ctx.globalAlpha = 0.95;
+                    ctx.fillStyle = '#ffeaa0';
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, rr, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.restore();
+                }
+            }
+
+            function drawEnemy(e) {
+                const t = state.time * 0.9 + e.wobble;
+                const wob = (Math.sin(t) * 0.5 + 0.5) * 0.6;
+
+                ctx.save();
+                // sombra
+                ctx.globalAlpha = 0.25;
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.ellipse(e.x, e.y + e.r * 0.85, e.r * 0.9, e.r * 0.45, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // cuerpo
+                const hue = e.hue;
+                ctx.globalAlpha = 0.95;
+                ctx.fillStyle = `hsl(${hue} 85% 60%)`;
+                ctx.beginPath();
+                ctx.arc(e.x, e.y, e.r + wob, 0, Math.PI * 2);
+                ctx.fill();
+
+                // brillo
+                ctx.globalAlpha = 0.16;
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(e.x - e.r * 0.35, e.y - e.r * 0.35, e.r * 0.55, 0, Math.PI * 2);
+                ctx.fill();
+
+                // ojo
+                ctx.globalAlpha = 0.9;
+                ctx.fillStyle = '#081022';
+                ctx.beginPath();
+                ctx.arc(e.x + e.r * 0.15, e.y - e.r * 0.10, e.r * 0.22, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            function drawPlayer() {
+                // invulnerable parpadeo
+                const inv = (state.time - state.lastHitTime) < 1.0;
+                const blink = inv ? (Math.sin(state.time * 18) * 0.5 + 0.5) : 1;
+
+                const speed = Math.hypot(player.vx, player.vy);
+                const ang = Math.atan2(player.vy, player.vx);
+                const mouth = (Math.sin(player.mouth) * 0.5 + 0.5) * player.mouthOpen * clamp(speed / player.maxSpeed, 0.2, 1);
+
+                ctx.save();
+                // sombra
+                ctx.globalAlpha = 0.25 * blink;
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.ellipse(player.x, player.y + player.r * 0.85, player.r * 0.95, player.r * 0.45, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // pacman
+                ctx.globalAlpha = 0.98 * blink;
+                ctx.fillStyle = player.color;
+                ctx.beginPath();
+                const a0 = ang + mouth;
+                const a1 = ang - mouth;
+                ctx.moveTo(player.x, player.y);
+                ctx.arc(player.x, player.y, player.r, a0, a1, true);
+                ctx.closePath();
+                ctx.fill();
+
+                // ojo
+                ctx.globalAlpha = 0.9 * blink;
+                ctx.fillStyle = '#0b1020';
+                const ex = player.x + Math.cos(ang + Math.PI / 2) * (player.r * 0.35) + Math.cos(ang) * (player.r * 0.15);
+                const ey = player.y + Math.sin(ang + Math.PI / 2) * (player.r * 0.35) + Math.sin(ang) * (player.r * 0.15);
+                ctx.beginPath();
+                ctx.arc(ex, ey, player.r * 0.16, 0, Math.PI * 2);
+                ctx.fill();
+
+                // halo
+                ctx.globalAlpha = 0.14 * blink;
+                const rg = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, player.r * 5);
+                rg.addColorStop(0, 'rgba(255,240,160,0.35)');
+                rg.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = rg;
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, player.r * 5, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            function draw() {
+                drawBackground();
+
+                // pelotas y enemigos
+                drawPellets();
+                for (const e of enemies) drawEnemy(e);
+                drawPlayer();
+
+                // pequeña guía al ratón
+                if (mouse.active && state.running) {
+                    ctx.save();
+                    ctx.globalAlpha = 0.15;
+                    ctx.strokeStyle = '#9ad0ff';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(player.x, player.y);
+                    ctx.lineTo(mouse.x, mouse.y);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+
+            // ========= Loop =========
+            let last = performance.now();
+            function loop(now) {
+                const dt = Math.min(0.05, (now - last) / 1000);
+                last = now;
+
+                update(dt);
+                draw();
+
+                requestAnimationFrame(loop);
+            }
+
+            // ========= Init =========
+            resetGame();
+            requestAnimationFrame(loop);
+
+            // Mensaje extra si el usuario intenta sin ratón
+            setTimeout(() => {
+                showToast("Consejo: mueve el ratón para atraer al comecocos", 1400);
+            }, 1200);
+
+        })();
+    </script>
+</body>
+
+</html>
